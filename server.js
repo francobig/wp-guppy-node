@@ -4,9 +4,14 @@ const dotenv = require('dotenv');
 dotenv.config();
 const io = require('socket.io')(http, {
   cors: {
-    origins: [process.env.DOMAIN]
+    origin: process.env.DOMAIN || 'https://museodelpittore.it',  // Usa origin (singolare)
+    methods: ['GET', 'POST'],
+    credentials: true
   },
-  maxHttpBufferSize: 1e8
+  allowEIO3: true,  // Abilita la compatibilità con Engine.IO v3
+  maxHttpBufferSize: 1e8,
+  pingTimeout: 60000,  // Aumenta il timeout per WebSocket
+  pingInterval: 25000  // Invia ping regolari per mantenere la connessione attiva
 });
 
 
