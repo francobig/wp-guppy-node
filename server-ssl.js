@@ -1,51 +1,64 @@
-const fs          = require('fs');
-var options = {
+const fs = require('fs');
+const dotenv = require('dotenv');
+dotenv.config();
+const express = require('express');
+const app = express();
+
+// Leggi i certificati SSL (assicurati che i file siano nella cartella corretta)
+const options = {
   key: fs.readFileSync('sslcert/private.key'),
   cert: fs.readFileSync('sslcert/ssl_cert.crt'),
 };
-const dotenv = require('dotenv');
-dotenv.config();
-const app     = require('express')();
-const https   = require('https').createServer(options,app);
-const io      = require('socket.io')(https, {
+
+// Crea il server HTTPS
+const httpsServer = require('https').createServer(options, app);
+
+// Configura Socket.io
+const io = require('socket.io')(httpsServer, {
   cors: {
-    origins: [process.env.DOMAIN]
+    origin: process.env.DOMAIN,  // Assicurati che sia DOMAIN e non DOMIAN
+    methods: ['GET', 'POST'],
+    credentials: true
   },
   maxHttpBufferSize: 1e8
 });
 
-app.set('port', process.env.PORT_ID);
-  
+// Usa la porta dinamica fornita da Render o 443 se in locale
+const PORT = process.env.PORT || 443;
+
 app.get('/', (req, res) => {
   res.send('<h1>Hello WPGuppy Socket.io</h1>');
 });
 
-var connectedUsers  = [];
+httpsServer.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
 
-https.listen(app.get('port'), () =>  console.log('server is running on port '+ app.get('port')));
+// Gestione degli utenti connessi
+let connectedUsers = [];
 
 io.on('connection', (socket) => {
-  
-  // let token = socket.handshake.auth.token;
-  //add new user's id to socket.
-	socket.on('addUser', (data) => {
-    
-    let onlineUsers = [];
-    if(connectedUsers.length){
-      connectedUsers.forEach( item => {
-        if(!onlineUsers.includes(item.userId)){
-          onlineUsers.push(item.userId);
-        }
-      });
+  console.log(`Nuovo utente connesso: ${socket.id}`);
+
+  socket.on('addUser', (data) => {
+    if (!connectedUsers.some(user => user.userId === data.userId)) {
+      connectedUsers.push({ userId: data.userId, socket_id: socket.id });
+      console.log('Utenti connessi:', connectedUsers.map(u => u.userId));
     }
-    let payload = {
-      userId          :  data.userId,
-      connectedUsers  :  onlineUsers,
-    }
-    io.emit('userConnected',  payload);
-    connectedUsers.push({ userId: data.userId, socket_id: socket.id });
-		console.log('connectusers',connectedUsers);
-	});
+
+    io.emit('userConnected', {
+      userId: data.userId,
+      connectedUsers: connectedUsers.map(user => user.userId),
+    });
+  });
+
+  socket.on('disconnect', () => {
+    connectedUsers = connectedUsers.filter(user => user.socket_id !== socket.id);
+    io.emit('userDisconnected', socket.id);
+    console.log(`Utente disconnesso: ${socket.id}`);
+  });
+});
+
   
   // on disconnection 
   socket.on('disconnect', () => {
